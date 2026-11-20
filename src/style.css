@@ -146,12 +146,12 @@ main:not(.auth) { max-width: 972px; margin: 0 auto; padding: 55px clamp(24px, 5v
 .history-score { display: grid; flex: none; text-align: right; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .history-delete { flex: none; color: var(--muted); }
 .history-delete:hover:not(:disabled) { color: #ffada1; }
-.training-calendar { margin-bottom: 10px; gap: 5px; }
+.training-calendar { margin-bottom: 8px; gap: 4px; }
 .attendance { table-layout: fixed; max-width: 480px; }
-.attendance th, .attendance td { border: 0; padding: 2px 0; text-align: center; }
+.attendance th, .attendance td { border: 0; padding: 2px 0; text-align: center; line-height: 1.1; }
 .attendance th { color: var(--muted); font-size: .8125rem; font-weight: 500; }
-.attendance th[scope="row"], .attendance thead td { text-align: left; width: 2rem; }
-.attendance-day { display: inline-block; vertical-align: middle; width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 3px; background: #111314; }
+.attendance th[scope="row"], .attendance thead td { text-align: left; width: 2.75rem; }
+.attendance-day { display: inline-block; vertical-align: middle; width: 16px; height: 16px; border: 1px solid var(--line); border-radius: 3px; background: #111314; }
 .attendance-day.completed { border-color: transparent; }
 .attendance-day.missed { background: #342927; border-color: #a6645b; }
 .attendance-legend { display: flex; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: .8125rem; }

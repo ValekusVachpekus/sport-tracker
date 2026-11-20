@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { completionColor, completionPercent, dateKey, localDate, shortDays, trainingWeeks, workoutCompletion, type Program, type Workout } from './model'
 
-const visibleWeeks = 6
-const columnDate = new Intl.DateTimeFormat('ru', { day: '2-digit', month: '2-digit' })
+const visibleWeeks = 5
+const weekStartDate = new Intl.DateTimeFormat('ru', { day: '2-digit', month: '2-digit' })
 const fullDate = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric' })
 
 export function TrainingCalendar({ now, workouts, program }: { now: Date; workouts: Workout[]; program?: Program }) {
@@ -30,11 +30,10 @@ export function TrainingCalendar({ now, workouts, program }: { now: Date; workou
       </div>
     </div>
     <table className="attendance">
-      <thead><tr><td />{weeks.map(week => <th key={week[0]} scope="col">{columnDate.format(localDate(week[0]))}</th>)}</tr></thead>
-      <tbody>{shortDays.map((day, i) => <tr key={day}>
-        <th scope="row">{day}</th>
-        {weeks.map(week => {
-          const date = week[i]
+      <thead><tr><td />{shortDays.map(day => <th key={day} scope="col">{day}</th>)}</tr></thead>
+      <tbody>{weeks.map(week => <tr key={week[0]}>
+        <th scope="row">{weekStartDate.format(localDate(week[0]))}</th>
+        {week.map((date, i) => {
           const score = completed.get(date)
           const percent = score ? completionPercent(score.completed, score.planned) : null
           const missed = !score && date < today && Boolean(program?.days[i].slots.length)
