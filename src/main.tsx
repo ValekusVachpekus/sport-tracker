@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Activity, BarChart3, CalendarDays, Check, ChevronRight, ClipboardList, Dumbbell, LogOut, Play, RefreshCw } from 'lucide-react'
 import * as api from './api'
 import { changeLocal, emptyLocal, readLocal } from './storage'
-import { doneCount, localDate, recentForSlot, shortDays, startWorkout, type HistoryRow, type Workout } from './model'
+import { doneCount, localDate, readBodyMass, recentForSlot, shortDays, startWorkout, type HistoryRow, type Workout } from './model'
 import { ProgramEditor } from './ProgramEditor'
 import { WorkoutEditor } from './WorkoutEditor'
 import { Progress } from './Progress'
@@ -19,6 +19,12 @@ type Tab = typeof tabs[number]['id']
 const message = (error: unknown) => error instanceof Error ? error.message : 'Не удалось сохранить данные.'
 const prettyDate = new Intl.DateTimeFormat('ru', { day: 'numeric', month: 'long', year: 'numeric' })
 const todayFormat = new Intl.DateTimeFormat('ru', { weekday: 'long', day: 'numeric', month: 'long' })
+const kgFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 3 })
+
+function WorkoutDate({ workout }: { workout: Workout }) {
+  const mass = readBodyMass(workout.bodyMassKg)
+  return <span>{prettyDate.format(localDate(workout.date))}{mass !== null && ` · Масса тела ${kgFormat.format(mass)} кг`}</span>
+}
 
 function Brand() {
   return <div className="brand"><span className="brand-icon"><Dumbbell size={21} /></span><span>Sport Tracker</span></div>
@@ -257,10 +263,10 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
             {connected && !historyReady && <p className="muted">{loading ? 'Загружаем историю…' : 'История пока недоступна.'}</p>}
             {connected && historyReady && !history.length && !local.queue.length && <p className="muted">Здесь появятся завершённые тренировки.</p>}
             <ul className="history-list">
-              {local.queue.map(workout => <li key={workout.id}><div><strong>{workout.title}</strong><span>{prettyDate.format(localDate(workout.date))}</span></div><small>Ожидает отправки</small></li>)}
+              {local.queue.map(workout => <li key={workout.id}><div><strong>{workout.title}</strong><WorkoutDate workout={workout} /></div><small>Ожидает отправки</small></li>)}
               {connected && history.filter(({ workout }) => !queueIds.has(workout.id)).map(row => <li key={row.workout.id}>
                 <button className="history-row" onClick={() => { setEdit(row); window.scrollTo(0,0) }}>
-                  <div><strong>{row.workout.title}</strong><span>{prettyDate.format(localDate(row.workout.date))}</span></div>
+                  <div><strong>{row.workout.title}</strong><WorkoutDate workout={row.workout} /></div>
                   <span className="history-count"><Check /> {doneCount(row.workout)}<ChevronRight /></span>
                 </button>
               </li>)}

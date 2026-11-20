@@ -1,5 +1,5 @@
 import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
-import { doneCount, suggestedWeight, validEntry, type SetEntry, type Workout, type WorkoutExercise } from './model'
+import { doneCount, readBodyMass, suggestedWeight, validEntry, type SetEntry, type Workout, type WorkoutExercise } from './model'
 
 export function WorkoutEditor({ workout, previous, change, complete, cancel, busy, editing = false }: {
   workout: Workout
@@ -19,9 +19,22 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
     update(itemId, entries => entries.map((set, i) => i === index ? { ...set, ...fields } : set))
   }
   const completed = doneCount(workout)
+  const invalidMass = Boolean(workout.bodyMassKg?.trim()) && readBodyMass(workout.bodyMassKg) === null
   return <>
     <header className="page-heading"><p className="eyebrow">{editing ? 'Редактирование истории' : 'Тренировка'}</p><h1>{workout.title}</h1><p className="muted">Подходов выполнено: {completed}</p></header>
     <fieldset className="editor" disabled={busy}>
+      <section className="panel section">
+        <label className="body-mass">
+          <span>Масса тела, кг <small>Необязательно</small></span>
+          <input aria-label="Масса тела, кг" aria-invalid={invalidMass} aria-describedby={invalidMass ? 'body-mass-error' : undefined}
+            inputMode="decimal" maxLength={9} placeholder="—" value={workout.bodyMassKg ?? ''}
+            onChange={event => {
+              const bodyMassKg = event.target.value
+              change(current => ({ ...current, bodyMassKg }))
+            }} />
+        </label>
+        {invalidMass && <p id="body-mass-error" className="feedback error">Введи массу больше нуля или оставь поле пустым.</p>}
+      </section>
       {workout.exercises.map(item => {
         const prior = previous[item.slot.id]
         const nextWeight = suggestedWeight(item.slot, prior)
@@ -55,7 +68,7 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
         </section>
       })}
       <div className="editor-footer">
-        <button className="primary" disabled={!completed} onClick={complete}>{editing ? 'Сохранить изменения' : 'Завершить тренировку'}</button>
+        <button className="primary" disabled={!completed || invalidMass} onClick={complete}>{editing ? 'Сохранить изменения' : 'Завершить тренировку'}</button>
         <button className="text-button muted" onClick={cancel}>{editing ? 'Отмена' : 'Отменить тренировку'}</button>
       </div>
     </fieldset>

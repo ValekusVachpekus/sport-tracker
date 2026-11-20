@@ -97,8 +97,12 @@ main:not(.auth) { max-width: 972px; margin: 0 auto; padding: 55px clamp(24px, 5v
 .actions { display: flex; align-items: center; flex: none; }
 .actions button { color: var(--muted); }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(85px, 1fr)); gap: 8px; }
-.add-row { display: flex; gap: 8px; }
+.add-exercise { background: #212723; border-color: #4b5648; }
+.add-row { display: flex; align-items: end; gap: 8px; }
+.add-row label { flex: 1; min-width: 0; }
 .add-row button { flex: none; }
+.add-status { color: var(--accent); overflow-wrap: anywhere; }
+.add-status:empty { position: absolute; }
 .disclosure { border-top: 1px solid var(--line); padding-top: 7px; }
 .disclosure summary { cursor: pointer; min-height: 44px; padding-top: 8px; color: var(--accent); font-weight: 650; }
 .disclosure label { margin-top: 8px; }
@@ -118,6 +122,10 @@ main:not(.auth) { max-width: 972px; margin: 0 auto; padding: 55px clamp(24px, 5v
 .workout-block { gap: 8px; }
 .add-set { justify-self: start; padding-left: 0; }
 .editor-footer { display: flex; flex-wrap: wrap; gap: 7px; }
+.body-mass { grid-template-columns: 1fr minmax(78px, 120px); align-items: center; }
+.body-mass span { color: #f2f4ef; font-weight: 650; font-size: 1rem; }
+.body-mass small { display: block; color: var(--muted); font-weight: 400; font-size: .875rem; }
+.body-mass input[aria-invalid="true"] { border-color: #aa7062; }
 .history-list li { padding: 0; }
 .history-list li > div, .history-row div { display: grid; gap: 3px; text-align: left; }
 .history-list li > div, .history-list li > small { padding: .7rem 0; }
@@ -126,6 +134,7 @@ main:not(.auth) { max-width: 972px; margin: 0 auto; padding: 55px clamp(24px, 5v
 .history-row:hover { color: var(--accent); }
 .history-count { display: flex; align-items: center; gap: 5px; color: var(--muted); }
 .segments { display: flex; flex-wrap: wrap; gap: 6px; }
+.progress-mode { margin-bottom: 15px; }
 .segments button { padding: 0 .75rem; border-color: var(--line); }
 .segments button[aria-pressed="true"] { color: var(--accent); border-color: #779449; background: #2b3126; }
 .chart-heading strong { font-size: 2rem; }
@@ -150,6 +159,8 @@ th, td { text-align: left; padding: 8px 4px; border-top: 1px solid var(--line); 
   .week button { min-height: 59px; }
   .today-card { min-height: 211px; }
   .plate { right: -105px; }
+  .add-row { display: grid; }
+  .add-row button { justify-self: stretch; }
   .set-grid { grid-template-columns: 16px minmax(49px, 1fr) minmax(32px, 1fr) minmax(41px, 1fr) 44px 44px; gap: 4px; }
   .set-line input { padding-inline: 2px; }
   .set-labels, .set-prior { font-size: .8125rem; }

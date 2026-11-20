@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { doneCount, newProgram, progressPoints, readNumber, recentForSlot, startWorkout, suggestedWeight, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
+import { bodyMassPoints, doneCount, newProgram, progressPoints, readBodyMass, readNumber, recentForSlot, startWorkout, suggestedWeight, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
 
 const slot: Slot = { id: 'bench', exerciseId: 'standard-1', sets: 3, min: 8, max: 10, start: 60, step: 2.5 }
 const session = (weight: string, reps = '10'): WorkoutExercise => ({
@@ -48,5 +48,26 @@ test('прогресс учитывает только отмеченные по
   ], slot.exerciseId, 4, new Date(2026, 10, 20))
   assert.deepEqual(points.map(({ id, max, volume, reps }) => [id, max, volume, reps]), [
     ['old', 60, 1800, 30], ['new', 62.5, 1250, 20],
+  ])
+})
+
+test('масса тела необязательна, принимает запятую и учитывается за выбранный период', () => {
+  assert.equal(readBodyMass(' 78,45 '), 78.45)
+  assert.equal(readBodyMass('0'), null)
+  assert.equal(readBodyMass('-2'), null)
+  assert.equal(readBodyMass(''), null)
+  assert.equal(readBodyMass(), null)
+  const rows = [
+    row('new', '2026-11-20', session('60')),
+    row('no-mass', '2026-11-18', session('60')),
+    row('old', '2026-11-13', session('60')),
+    row('outside', '2026-10-01', session('50')),
+  ]
+  rows[0].workout.bodyMassKg = '78,45'
+  rows[2].workout.bodyMassKg = '79.1'
+  rows[3].workout.bodyMassKg = '80'
+  assert.deepEqual(bodyMassPoints(rows, 4, new Date(2026, 10, 20)), [
+    { id: 'old', date: '2026-11-13', value: 79.1 },
+    { id: 'new', date: '2026-11-20', value: 78.45 },
   ])
 })

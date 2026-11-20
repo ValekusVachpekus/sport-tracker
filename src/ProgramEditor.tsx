@@ -13,9 +13,14 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [createError, setCreateError] = useState('')
+  const [addedId, setAddedId] = useState('')
   // Keep input strings until save so intermediate decimal values stay editable.
   const [weights, setWeights] = useState<Record<string, string>>({})
   const day = program.days[index]
+  const selectedExercise = program.exercises.find(exercise => exercise.id === exerciseId && !exercise.archived)
+  const addedSlot = day.slots.find(slot => slot.id === addedId)
+  const addedExercise = program.exercises.find(exercise => exercise.id === addedSlot?.exerciseId)
 
   function update(next: Program) {
     setProgram(next)
@@ -30,21 +35,27 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   function newSlot(id: string): Slot {
     return { id: crypto.randomUUID(), exerciseId: id, sets: 3, min: 8, max: 12, start: null, step: null }
   }
-  function addExercise() {
+  function addToDay(exercise: Exercise, exercises = program.exercises) {
+    const slot = newSlot(exercise.id)
+    update({
+      exercises,
+      days: program.days.map((item, i) => i === index ? { ...item, slots: [...item.slots, slot] } : item),
+    })
+    setAddedId(slot.id)
+    setExerciseId('')
+  }
+  function createExercise() {
     const name = newName.trim()
     if (!name) return
     if (program.exercises.some(exercise => exercise.name.toLocaleLowerCase('ru') === name.toLocaleLowerCase('ru'))) {
-      setError('Упражнение с таким названием уже есть в каталоге.')
+      setCreateError('Упражнение с таким названием уже есть в каталоге.')
       return
     }
     const exercise: Exercise = { id: crypto.randomUUID(), name, bodyweight, archived: false }
-    update({
-      exercises: [...program.exercises, exercise],
-      days: program.days.map((item, i) => i === index ? { ...item, slots: [...item.slots, newSlot(exercise.id)] } : item),
-    })
+    addToDay(exercise, [...program.exercises, exercise])
     setNewName('')
     setBodyweight(false)
-    setError('')
+    setCreateError('')
   }
   function move(position: number, distance: number) {
     const slots = [...day.slots]
@@ -83,6 +94,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
       setBusy(true)
       setRevision(await onSave(normalized, revision))
       setProgram(normalized)
+      setAddedId('')
       setSaved(true)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить программу.')
@@ -92,14 +104,19 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   return <>
     <header className="page-heading"><p className="eyebrow">Расписание</p><h1>Программа</h1></header>
     <div className="week program-week" aria-label="Дни недели">
-      {shortDays.map((label, i) => <button key={label} aria-pressed={index === i} className={index === i ? 'selected' : ''} onClick={() => setIndex(i)}>
+      {shortDays.map((label, i) => <button key={label} aria-pressed={index === i} className={index === i ? 'selected' : ''} onClick={() => {
+        if (i === index) return
+        setIndex(i)
+        setExerciseId('')
+        setAddedId('')
+      }}>
         {label}<span>{program.days[i].slots.length || '–'}</span>
       </button>)}
     </div>
     <fieldset disabled={busy} className="editor">
       <section className="panel section">
         <label>Название тренировки<input value={day.name} maxLength={70} onChange={event => updateDay({ ...day, name: event.target.value })} /></label>
-        <div className="section-title"><h2>Упражнения</h2><span className="muted">{day.slots.length}</span></div>
+        <div className="section-title"><h2>Упражнения в программе</h2><span className="muted">{day.slots.length}</span></div>
         {day.slots.length === 0 && <p className="muted">Добавь упражнения, чтобы запланировать тренировку на этот день.</p>}
         {day.slots.map((slot, position) => {
           const exercise = program.exercises.find(x => x.id === slot.exerciseId)!
@@ -123,19 +140,33 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
             </div>
           </div>
         })}
+      </section>
+      <section className="panel section add-exercise" aria-labelledby="add-exercise-heading">
+        <h2 id="add-exercise-heading">Добавить упражнение</h2>
         <div className="add-row">
-          <select aria-label="Упражнение из каталога" value={exerciseId} onChange={event => setExerciseId(event.target.value)}>
-            <option value="">Выбрать из каталога</option>
-            {program.exercises.filter(x => !x.archived).map(exercise => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}
-          </select>
-          <button className="secondary" disabled={!exerciseId} onClick={() => { updateDay({ ...day, slots: [...day.slots, newSlot(exerciseId)] }); setExerciseId('') }}><Plus /> Добавить</button>
+          <label>Из каталога
+            <select value={exerciseId} onChange={event => setExerciseId(event.target.value)}>
+              <option value="">Выбери упражнение</option>
+              {program.exercises.filter(x => !x.archived).map(exercise => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}
+            </select>
+          </label>
+          <button className="secondary" disabled={!selectedExercise} onClick={() => {
+            if (selectedExercise) addToDay(selectedExercise)
+          }}><Plus /> Добавить в программу</button>
         </div>
         <details className="disclosure">
           <summary>Создать своё упражнение</summary>
-          <label>Название<input value={newName} maxLength={80} onChange={event => setNewName(event.target.value)} /></label>
+          <label>Название<input value={newName} maxLength={80} onChange={event => {
+            setNewName(event.target.value)
+            setCreateError('')
+          }} /></label>
           <label className="check"><input type="checkbox" checked={bodyweight} onChange={event => setBodyweight(event.target.checked)} /> С собственным весом</label>
-          <button className="secondary" disabled={!newName.trim()} onClick={addExercise}>Создать и добавить</button>
+          {createError && <p className="feedback error" role="alert">{createError}</p>}
+          <button className="secondary" disabled={!newName.trim()} onClick={createExercise}>Создать и добавить</button>
         </details>
+        <div className="add-status" role="status">
+          {addedExercise && <>«{addedExercise.name}» добавлено. Сохрани программу, чтобы применить изменения.</>}
+        </div>
       </section>
       <section className="panel section">
         <button className="text-button" aria-expanded={catalog} onClick={() => setCatalog(!catalog)}><Archive /> {catalog ? 'Свернуть каталог' : 'Управлять каталогом'}</button>

@@ -4,7 +4,7 @@ export type Day = { name: string; slots: Slot[] }
 export type Program = { exercises: Exercise[]; days: Day[] }
 export type SetEntry = { weight: string; reps: string; status: 'open' | 'done' | 'skipped' }
 export type WorkoutExercise = { slot: Slot; name: string; bodyweight: boolean; entries: SetEntry[] }
-export type Workout = { id: string; date: string; title: string; day: number; exercises: WorkoutExercise[] }
+export type Workout = { id: string; date: string; title: string; day: number; exercises: WorkoutExercise[]; bodyMassKg?: string }
 export type HistoryRow = { workout: Workout; revision: number }
 export const weekdays = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 export const shortDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -31,6 +31,11 @@ export function localDate(key: string) {
 export function readNumber(raw: string) {
   const value = raw.trim().replace(',', '.')
   return /^\d+(\.\d{1,3})?$/.test(value) ? Number(value) : NaN
+}
+
+export function readBodyMass(raw?: string) {
+  const value = readNumber(raw ?? '')
+  return Number.isFinite(value) && value > 0 ? value : null
 }
 
 export function validEntry(set: SetEntry, bodyweight: boolean) {
@@ -82,11 +87,22 @@ export function startWorkout(program: Program, dayIndex: number, history: Histor
 }
 
 export type Point = { id: string; date: string; max: number; volume: number; reps: number }
-export function progressPoints(history: HistoryRow[], exerciseId: string, weeks: number, today = new Date()): Point[] {
+function workoutsInPeriod(history: HistoryRow[], weeks: number, today: Date) {
   const start = new Date(today)
   if (weeks) start.setDate(start.getDate() - weeks * 7 + 1)
   const startKey = dateKey(start)
-  return history.filter(({ workout }) => !weeks || workout.date >= startKey).flatMap(({ workout }) => {
+  return history.filter(({ workout }) => !weeks || workout.date >= startKey).map(({ workout }) => workout).reverse()
+}
+
+export function bodyMassPoints(history: HistoryRow[], weeks: number, today = new Date()) {
+  return workoutsInPeriod(history, weeks, today).flatMap(workout => {
+    const value = readBodyMass(workout.bodyMassKg)
+    return value === null ? [] : [{ id: workout.id, date: workout.date, value }]
+  })
+}
+
+export function progressPoints(history: HistoryRow[], exerciseId: string, weeks: number, today = new Date()): Point[] {
+  return workoutsInPeriod(history, weeks, today).flatMap(workout => {
     const sets = workout.exercises.filter(x => x.slot.exerciseId === exerciseId)
       .flatMap(x => x.entries.filter(set => set.status === 'done' && validEntry(set, x.bodyweight)))
     if (!sets.length) return []
@@ -96,5 +112,5 @@ export function progressPoints(history: HistoryRow[], exerciseId: string, weeks:
       volume: sets.reduce((sum, set) => sum + (readNumber(set.weight) || 0) * readNumber(set.reps), 0),
       reps: sets.reduce((sum, set) => sum + readNumber(set.reps), 0),
     }]
-  }).reverse()
+  })
 }
