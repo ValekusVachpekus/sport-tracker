@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bodyMassPoints, completionColor, doneCount, journalExport, newProgram, progressPoints, progressSummary, readBodyMass, readNumber, recentForSlot, startWorkout, suggestedWeight, trainingWeeks, workoutCompletion, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
+import { bodyMassPoints, completionColor, copyWorkout, doneCount, journalExport, newProgram, progressPoints, progressSummary, readBodyMass, readNumber, recentForSlot, startWorkout, suggestedWeight, trainingWeeks, upgradeProgram, workoutCompletion, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
 
 const slot: Slot = { id: 'bench', exerciseId: 'standard-1', sets: 3, min: 8, max: 10, start: 60, step: 2.5 }
 const session = (weight: string, reps = '10'): WorkoutExercise => ({
@@ -131,4 +131,32 @@ test('процент выполнения учитывает пропущенн�
   assert.equal(completionColor(133), completionColor(100))
   assert.notEqual(completionColor(75), completionColor(100))
   assert.notEqual(completionColor(0), completionColor(75))
+})
+
+test('старое расписание получает шаблоны и сохраняет связи с историей', () => {
+  const { days, exercises } = newProgram()
+  days[0] = { name: 'Понедельник', slots: [{ ...slot }] }
+  days[1] = { name: 'Ноги', slots: [{ ...slot, id: 'legs' }] }
+  days[2].name = 'Среда'
+  const upgraded = upgradeProgram({ days, exercises })
+  assert.deepEqual(upgraded.templates.map(item => item.name), ['Тренировка 1', 'Ноги'])
+  assert.equal(upgraded.days[0].slots[0].id, slot.id)
+  assert.notEqual(upgraded.templates[0].slots[0].id, slot.id)
+  assert.equal(upgraded.days[2].name, '')
+  assert.deepEqual(upgradeProgram(upgraded), upgraded)
+})
+
+test('два дня получают независимые копии одного шаблона', () => {
+  const program = newProgram()
+  const template = { id: 'upper', name: 'Верх тела', slots: [{ ...slot, name: 'Жим на наклонной' }] }
+  program.days[0] = copyWorkout(template)
+  program.days[3] = copyWorkout(template)
+  program.days[3].name = 'Верх, тяжёлая'
+  program.days[3].slots[0].name = 'Жим'
+  program.days[3].slots[0].start = 72
+  assert.equal(program.days[0].name, 'Верх тела')
+  assert.equal(program.days[0].slots[0].start, 60)
+  assert.equal(template.slots[0].name, 'Жим на наклонной')
+  assert.notEqual(program.days[0].slots[0].id, program.days[3].slots[0].id)
+  assert.equal(startWorkout(program, 0, []).exercises[0].name, 'Жим на наклонной')
 })

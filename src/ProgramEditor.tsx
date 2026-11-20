@@ -1,18 +1,22 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Copy, Download, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
 import { downloadJson } from './download'
-import { dateKey, programExport, readNumber, shortDays, weekdays, type Exercise, type Program, type Slot } from './model'
+import { copyWorkout, dateKey, programExport, readNumber, shortDays, weekdays, type Day, type Exercise, type Program, type Slot } from './model'
+
+const emptyWorkout: Day = { name: '', slots: [] }
 
 export function ProgramEditor({ initial, today, onSave }: { initial: { program: Program; revision: number }; today: number; onSave: (program: Program, revision: number) => Promise<number> }) {
   const [program, setProgram] = useState(initial.program)
   const [revision, setRevision] = useState(initial.revision)
   const [index, setIndex] = useState(today)
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [templateId, setTemplateId] = useState('')
   const [exerciseId, setExerciseId] = useState('')
   const [newName, setNewName] = useState('')
   const [bodyweight, setBodyweight] = useState(false)
   const [creating, setCreating] = useState(false)
   const [catalog, setCatalog] = useState(false)
-  const [rename, setRename] = useState<{ slotId: string; exerciseId: string; name: string }>()
+  const [rename, setRename] = useState<{ slotId: string; name: string }>()
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
@@ -21,22 +25,23 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   const [renameError, setRenameError] = useState('')
   // Keep input strings until save so intermediate decimal values stay editable.
   const [startingWeights, setStartingWeights] = useState<Record<string, string>>({})
-  const day = program.days[index]
+  const template = program.templates.find(item => item.id === templateId) ?? program.templates[0]
+  const day = showTemplates ? template ?? emptyWorkout : program.days[index]
   const selectedExercise = program.exercises.find(exercise => exercise.id === exerciseId && !exercise.archived)
 
-  function nameExists(name: string, exceptId?: string) {
+  function nameExists(name: string) {
     const normalized = name.toLocaleLowerCase('ru')
-    return program.exercises.some(item => item.id !== exceptId && item.name.toLocaleLowerCase('ru') === normalized)
+    return program.exercises.some(item => item.name.toLocaleLowerCase('ru') === normalized)
   }
 
   function withRenamedExercise() {
     if (!rename) return program
     const name = rename.name.trim()
-    if (!name || nameExists(name, rename.exerciseId)) {
-      setRenameError(name ? 'Такое название уже есть.' : 'Введи название.')
+    if (!name) {
+      setRenameError('Введи название.')
       return null
     }
-    return { ...program, exercises: program.exercises.map(item => item.id === rename.exerciseId ? { ...item, name } : item) }
+    return withWorkout({ ...day, slots: day.slots.map(slot => slot.id === rename.slotId ? { ...slot, name } : slot) })
   }
 
   function applyRename() {
@@ -50,8 +55,13 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
     setProgram(next)
     setSaved(false)
   }
-  function updateDay(next: typeof day) {
-    update({ ...program, days: program.days.map((item, i) => i === index ? next : item) })
+  function withWorkout(next: Day): Program {
+    return showTemplates
+      ? { ...program, templates: program.templates.map(item => item.id === template?.id ? { ...next, id: item.id } : item) }
+      : { ...program, days: program.days.map((item, i) => i === index ? next : item) }
+  }
+  function updateDay(next: Day) {
+    update(withWorkout(next))
   }
   function updateSlot(id: string, values: Partial<Slot>) {
     updateDay({ ...day, slots: day.slots.map(item => item.id === id ? { ...item, ...values } : item) })
@@ -62,8 +72,8 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   function addToDay(exercise: Exercise, exercises = program.exercises) {
     const slot = newSlot(exercise.id)
     update({
+      ...withWorkout({ ...day, slots: [...day.slots, slot] }),
       exercises,
-      days: program.days.map((item, i) => i === index ? { ...item, slots: [...item.slots, slot] } : item),
     })
     setExerciseId('')
   }
@@ -88,25 +98,68 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
     updateDay({ ...day, slots })
   }
 
+  function normalizeWorkout<T extends Day>(item: T, context: string): T {
+    return {
+      ...item,
+      name: item.name.trim() || (item.slots.length ? 'Тренировка' : ''),
+      slots: item.slots.map(slot => {
+        const name = slot.name ?? program.exercises.find(x => x.id === slot.exerciseId)?.name
+        const raw = startingWeights[slot.id] ?? String(slot.start ?? '')
+        const start = raw.trim() ? readNumber(raw) : null
+        if (start !== null && !(start >= 0 && start <= 9999)) {
+          throw new Error(`${context}, ${name}: проверь стартовый вес.`)
+        }
+        if (!Number.isInteger(slot.sets) || slot.sets < 1 || slot.sets > 30 ||
+            !Number.isInteger(slot.min) || !Number.isInteger(slot.max) || slot.min < 1 || slot.max < slot.min || slot.max > 999) {
+          throw new Error(`${context}, ${name}: укажи 1–30 подходов и корректный диапазон повторений.`)
+        }
+        return { ...slot, start }
+      }),
+    }
+  }
+
   function normalizeProgram(next: Program): Program {
     return {
       ...next,
-      days: next.days.map((item, i) => ({
-        ...item, name: item.name.trim() || weekdays[i],
-        slots: item.slots.map(slot => {
-          const exercise = next.exercises.find(x => x.id === slot.exerciseId)!
-          const raw = startingWeights[slot.id] ?? String(slot.start ?? '')
-          const start = raw.trim() ? readNumber(raw) : null
-          if (start !== null && !(start >= 0 && start <= 9999)) {
-            throw new Error(`${weekdays[i]}, ${exercise.name}: проверь стартовый вес.`)
-          }
-          if (!Number.isInteger(slot.sets) || slot.sets < 1 || slot.sets > 30 ||
-              !Number.isInteger(slot.min) || !Number.isInteger(slot.max) || slot.min < 1 || slot.max < slot.min || slot.max > 999) {
-            throw new Error(`${weekdays[i]}, ${exercise.name}: укажи 1–30 подходов и корректный диапазон повторений.`)
-          }
-          return { ...slot, start }
-        }),
-      })),
+      days: next.days.map((item, i) => normalizeWorkout(item, weekdays[i])),
+      templates: next.templates.map(item => normalizeWorkout(item, item.name || 'Шаблон')),
+    }
+  }
+
+  function selectWorkout() {
+    setExerciseId('')
+    setRename(undefined)
+    setCreating(false)
+    setCatalog(false)
+    setError('')
+  }
+
+  function createTemplate(workout: Day) {
+    const next = { ...workout, id: crypto.randomUUID() }
+    update({ ...program, templates: [...program.templates, next] })
+    setTemplateId(next.id)
+  }
+
+  function saveDayAsTemplate() {
+    const next = withRenamedExercise()
+    if (!next) return
+    try {
+      const snapshot = copyWorkout(normalizeWorkout(next.days[index], weekdays[index]))
+      createTemplate(snapshot)
+      setError('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось скопировать тренировку.')
+    }
+  }
+
+  function assignTemplate() {
+    if (!template?.slots.length) return
+    if (day.slots.length && !window.confirm(`Заменить «${day.name || 'Тренировка'}» на «${template.name || 'Тренировка'}»?`)) return
+    try {
+      updateDay(copyWorkout(normalizeWorkout(template, template.name || 'Шаблон')))
+      selectWorkout()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не удалось назначить тренировку.')
     }
   }
 
@@ -147,32 +200,73 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
         disabled={busy} onClick={downloadProgram}><Download /></button>
     </header>
     {exportError && <p className="feedback error" role="alert">{exportError}</p>}
-    <div className="week program-week" aria-label="Дни недели">
-      {shortDays.map((label, i) => <button key={label} aria-pressed={index === i} className={index === i ? 'selected' : ''} onClick={() => {
-        if (i === index) return
-        setIndex(i)
-        setExerciseId('')
-        setRename(undefined)
-      }}>
-        {label}<span>{program.days[i].slots.length || '–'}</span>
-      </button>)}
-    </div>
     <fieldset disabled={busy} className="editor">
+      <div className="segments" aria-label="Редактор программы">
+        <button aria-pressed={!showTemplates} onClick={() => {
+          if (showTemplates) { setShowTemplates(false); selectWorkout() }
+        }}>Расписание</button>
+        <button aria-pressed={showTemplates} onClick={() => {
+          if (!showTemplates) { setShowTemplates(true); selectWorkout() }
+        }}>Шаблоны</button>
+      </div>
+      {!showTemplates && <div className="week program-week" aria-label="Дни недели">
+        {shortDays.map((label, i) => <button key={label} aria-pressed={index === i} className={index === i ? 'selected' : ''} onClick={() => {
+          if (i === index) return
+          setIndex(i)
+          selectWorkout()
+        }}>
+          {label}<span>{program.days[i].slots.length || '–'}</span>
+        </button>)}
+      </div>}
+      {(showTemplates || template) && <div className="program-toolbar">
+        {template && <select aria-label="Шаблон тренировки" value={template.id} onChange={event => {
+          setTemplateId(event.target.value)
+          if (showTemplates) selectWorkout()
+        }}>
+          {program.templates.map(item => <option key={item.id} value={item.id}>{item.name || 'Без названия'}</option>)}
+        </select>}
+        {showTemplates ? <>
+          <button className="secondary program-action" onClick={() => {
+            createTemplate({ name: 'Новый шаблон', slots: [] })
+            selectWorkout()
+          }}><Plus /> Новый шаблон</button>
+          {template && <button className="icon" aria-label="Удалить шаблон" title="Удалить шаблон" onClick={() => {
+            if (!window.confirm(`Удалить шаблон «${template.name || 'Без названия'}»?`)) return
+            update({ ...program, templates: program.templates.filter(item => item.id !== template.id) })
+            setTemplateId('')
+            selectWorkout()
+          }}><Trash2 /></button>}
+        </> : <button className="secondary program-action" disabled={!template?.slots.length} onClick={assignTemplate}>На этот день</button>}
+      </div>}
+      {(!showTemplates || template) && <>
       <section className="panel section">
-        <label>Название тренировки<input value={day.name} maxLength={70} onChange={event => updateDay({ ...day, name: event.target.value })} /></label>
+        <div className="program-toolbar workout-name-row">
+          <label>{showTemplates ? 'Название шаблона' : 'Название тренировки'}
+            <input value={day.name} placeholder="Например, Верх тела" maxLength={70} onChange={event => updateDay({ ...day, name: event.target.value })} />
+          </label>
+          {!showTemplates && day.slots.length > 0 && <>
+            <button className="text-button program-action" onClick={saveDayAsTemplate}><Copy /> В шаблоны</button>
+            <button className="icon" aria-label="Освободить день" title="Освободить день" onClick={() => {
+              if (!window.confirm(`Убрать тренировку из расписания на этот день?`)) return
+              updateDay(emptyWorkout)
+              selectWorkout()
+            }}><X /></button>
+          </>}
+        </div>
         <div className="section-title"><h2>Упражнения</h2><span className="muted">{day.slots.length}</span></div>
         {day.slots.map((slot, position) => {
           const exercise = program.exercises.find(x => x.id === slot.exerciseId)!
+          const exerciseName = slot.name ?? exercise.name
           return <div className="slot" key={slot.id}>
             <div className="section-title">
-              <h3><button type="button" className="exercise-name" aria-label={`Переименовать: ${exercise.name}`} onClick={() => {
-                setRename({ slotId: slot.id, exerciseId: exercise.id, name: exercise.name })
+              <h3><button type="button" className="exercise-name" aria-label={`Переименовать: ${exerciseName}`} onClick={() => {
+                setRename({ slotId: slot.id, name: exerciseName })
                 setRenameError('')
-              }}><span>{exercise.name}</span><Pencil /></button></h3>
+              }}><span>{exerciseName}</span><Pencil /></button></h3>
               <div className="actions">
-                <button type="button" className="icon" aria-label={`Выше: ${exercise.name}`} disabled={!position} onClick={() => move(position, -1)}><ArrowUp /></button>
-                <button type="button" className="icon" aria-label={`Ниже: ${exercise.name}`} disabled={position === day.slots.length - 1} onClick={() => move(position, 1)}><ArrowDown /></button>
-                <button type="button" className="icon" aria-label={`Убрать: ${exercise.name}`} onClick={() => {
+                <button type="button" className="icon" aria-label={`Выше: ${exerciseName}`} disabled={!position} onClick={() => move(position, -1)}><ArrowUp /></button>
+                <button type="button" className="icon" aria-label={`Ниже: ${exerciseName}`} disabled={position === day.slots.length - 1} onClick={() => move(position, 1)}><ArrowDown /></button>
+                <button type="button" className="icon" aria-label={`Убрать: ${exerciseName}`} onClick={() => {
                   if (rename?.slotId === slot.id) setRename(undefined)
                   updateDay({ ...day, slots: day.slots.filter(item => item.id !== slot.id) })
                 }}><Trash2 /></button>
@@ -214,7 +308,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
             setCreating(!creating)
             setCatalog(false)
           }}>Своё</button>
-          <button className="icon catalog-toggle" aria-label="Управлять каталогом" title="Управлять каталогом" aria-expanded={catalog} onClick={() => {
+          <button className="icon catalog-toggle" aria-label="Каталог упражнений" title="Каталог упражнений" aria-expanded={catalog} onClick={() => {
             setCatalog(!catalog)
             setCreating(false)
           }}><Settings2 /></button>
@@ -235,6 +329,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
           }}>{exercise.archived ? 'Вернуть' : 'В архив'}</button></li>)}
         </ul>}
       </section>
+      </>}
       {error && <p className="feedback error" role="alert">{error}</p>}
       {saved && <p className="feedback" role="status">Программа сохранена.</p>}
       <button className="primary" onClick={save}>{busy ? 'Сохранение…' : 'Сохранить программу'}</button>
