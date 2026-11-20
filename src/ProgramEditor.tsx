@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { ArrowDown, ArrowUp, Check, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
-import { readNumber, shortDays, weekdays, type Exercise, type Program, type Slot } from './model'
+import { ArrowDown, ArrowUp, Check, Download, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
+import { downloadJson } from './download'
+import { dateKey, programExport, readNumber, shortDays, weekdays, type Exercise, type Program, type Slot } from './model'
 
 export function ProgramEditor({ initial, today, onSave }: { initial: { program: Program; revision: number }; today: number; onSave: (program: Program, revision: number) => Promise<number> }) {
   const [program, setProgram] = useState(initial.program)
@@ -15,6 +16,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [exportError, setExportError] = useState('')
   const [createError, setCreateError] = useState('')
   const [renameError, setRenameError] = useState('')
   // Keep input strings until save so intermediate decimal values stay editable.
@@ -86,31 +88,48 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
     updateDay({ ...day, slots })
   }
 
+  function normalizeProgram(next: Program): Program {
+    return {
+      ...next,
+      days: next.days.map((item, i) => ({
+        ...item, name: item.name.trim() || weekdays[i],
+        slots: item.slots.map(slot => {
+          const exercise = next.exercises.find(x => x.id === slot.exerciseId)!
+          const raw = startingWeights[slot.id] ?? String(slot.start ?? '')
+          const start = raw.trim() ? readNumber(raw) : null
+          if (start !== null && !(start >= 0 && start <= 9999)) {
+            throw new Error(`${weekdays[i]}, ${exercise.name}: проверь стартовый вес.`)
+          }
+          if (!Number.isInteger(slot.sets) || slot.sets < 1 || slot.sets > 30 ||
+              !Number.isInteger(slot.min) || !Number.isInteger(slot.max) || slot.min < 1 || slot.max < slot.min || slot.max > 999) {
+            throw new Error(`${weekdays[i]}, ${exercise.name}: укажи 1–30 подходов и корректный диапазон повторений.`)
+          }
+          return { ...slot, start }
+        }),
+      })),
+    }
+  }
+
+  function downloadProgram() {
+    setExportError('')
+    const next = withRenamedExercise()
+    if (!next) return
+    try {
+      const now = new Date()
+      downloadJson(`sport-tracker-program-${dateKey(now)}.json`, programExport(normalizeProgram(next), now))
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : 'Не удалось скачать программу.')
+    }
+  }
+
   async function save() {
     setError('')
+    setExportError('')
     setSaved(false)
     const next = withRenamedExercise()
     if (!next) return
     try {
-      const normalized = {
-        ...next,
-        days: next.days.map((item, i) => ({
-          ...item, name: item.name.trim() || weekdays[i],
-          slots: item.slots.map(slot => {
-            const exercise = next.exercises.find(x => x.id === slot.exerciseId)!
-            const raw = startingWeights[slot.id] ?? String(slot.start ?? '')
-            const start = raw.trim() ? readNumber(raw) : null
-            if (start !== null && !(start >= 0 && start <= 9999)) {
-              throw new Error(`${weekdays[i]}, ${exercise.name}: проверь стартовый вес.`)
-            }
-            if (!Number.isInteger(slot.sets) || slot.sets < 1 || slot.sets > 30 ||
-                !Number.isInteger(slot.min) || !Number.isInteger(slot.max) || slot.min < 1 || slot.max < slot.min || slot.max > 999) {
-              throw new Error(`${weekdays[i]}, ${exercise.name}: укажи 1–30 подходов и корректный диапазон повторений.`)
-            }
-            return { ...slot, start }
-          }),
-        })),
-      }
+      const normalized = normalizeProgram(next)
       setBusy(true)
       setRevision(await onSave(normalized, revision))
       setProgram(normalized)
@@ -122,7 +141,12 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   }
 
   return <>
-    <header className="page-heading"><h1>Программа</h1></header>
+    <header className="page-heading section-title">
+      <h1>Программа</h1>
+      <button className="icon program-export" type="button" aria-label="Экспорт программы в JSON" title="Экспорт программы в JSON"
+        disabled={busy} onClick={downloadProgram}><Download /></button>
+    </header>
+    {exportError && <p className="feedback error" role="alert">{exportError}</p>}
     <div className="week program-week" aria-label="Дни недели">
       {shortDays.map((label, i) => <button key={label} aria-pressed={index === i} className={index === i ? 'selected' : ''} onClick={() => {
         if (i === index) return

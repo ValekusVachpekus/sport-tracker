@@ -256,7 +256,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
             </div>
             <section className="panel today-card">
               <div className="today-copy">
-                <h2>{planned.length ? schedule?.name : 'День отдыха'}</h2>
+                <h2>{planned.length ? schedule?.name || 'Тренировка' : 'День отдыха'}</h2>
                 {planned.length > 0 && <p className="muted">{planned.length} упр. · {planned.reduce((sum, item) => sum + item.sets, 0)} подх.</p>}
                 {planned.length ? <button className="primary" disabled={!connected || !localReady || busy} onClick={() => void start()}><Play fill="currentColor" /> Начать тренировку</button>
                   : <button className="secondary" onClick={() => navigate('program')}>Открыть программу</button>}
@@ -265,7 +265,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
             </section>
             {planned.length > 0 && <section className="panel section">
               <div className="section-title"><h2>Упражнения</h2></div>
-              <ul className="overview-list">{planned.map(item => <li key={item.id}><span>{program.program.exercises.find(x => x.id === item.exerciseId)?.name}</span><span className="muted">{item.sets} × {item.min === item.max ? item.min : `${item.min}–${item.max}`}</span></li>)}</ul>
+              <ul className="overview-list">{planned.map(item => <li key={item.id}><span>{item.name ?? program.program.exercises.find(x => x.id === item.exerciseId)?.name}</span><span className="muted">{item.sets} × {item.min === item.max ? item.min : `${item.min}–${item.max}`}</span></li>)}</ul>
             </section>}
           </> : <section className="panel section"><p className="muted">{loading ? 'Загружаем программу…' : 'Программа доступна после подключения к базе.'}</p></section>}
         </>}

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download } from 'lucide-react'
+import { downloadJson } from './download'
 import { bodyMassPoints, completionColor, dateKey, journalExport, localDate, progressPoints, progressSummary, workoutCompletion, type HistoryRow, type Program, type Workout } from './model'
 
 const format = new Intl.NumberFormat('ru', { maximumFractionDigits: 2 })
@@ -92,15 +93,7 @@ export function Progress({ history, program, queue }: { history: HistoryRow[]; p
 
   function downloadJournal() {
     const now = new Date()
-    const content = JSON.stringify(journalExport(program, history, queue, now), null, 2)
-    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `sport-tracker-${dateKey(now)}.json`
-    document.body.append(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    downloadJson(`sport-tracker-${dateKey(now)}.json`, journalExport(program, history, queue, now))
   }
 
   return <>

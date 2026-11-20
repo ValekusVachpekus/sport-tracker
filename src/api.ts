@@ -1,4 +1,4 @@
-import { newProgram, type HistoryRow, type Program, type Workout } from './model'
+import { newProgram, upgradeProgram, type HistoryRow, type Program, type StoredProgram, type Workout } from './model'
 
 const url = (import.meta.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '')
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? ''
@@ -7,6 +7,7 @@ export const configured = /^https?:\/\/[^/]+$/.test(url) && key.startsWith('sb_p
 
 type Session = { access_token: string; refresh_token: string; expires_at?: number; expires_in: number; user: { id: string } }
 export type ProgramRow = { program: Program; revision: number }
+type StoredProgramRow = { program: StoredProgram; revision: number }
 
 export function session(): Session | null {
   try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null') }
@@ -99,15 +100,15 @@ async function data<T>(owner: string, path: string, options?: RequestInit) {
 
 export async function loadProgram(owner: string) {
   const table = `programs?user_id=eq.${owner}&select=program,revision`
-  const [existing] = await data<ProgramRow[]>(owner, table)
-  if (existing) return existing
+  const [existing] = await data<StoredProgramRow[]>(owner, table)
+  if (existing) return { ...existing, program: upgradeProgram(existing.program) }
   await data(owner, 'programs?on_conflict=user_id', {
     method: 'POST', headers: { Prefer: 'resolution=ignore-duplicates' },
     body: JSON.stringify({ user_id: owner, program: newProgram() }),
   })
-  const [created] = await data<ProgramRow[]>(owner, table)
+  const [created] = await data<StoredProgramRow[]>(owner, table)
   if (!created) throw new Error('Не удалось открыть программу.')
-  return created
+  return { ...created, program: upgradeProgram(created.program) }
 }
 
 export async function saveProgram(owner: string, program: Program, revision: number) {

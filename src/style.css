@@ -87,6 +87,8 @@ main:not(.auth) { max-width: 972px; margin: 0 auto; padding: 55px clamp(24px, 5v
 .plate-inner { border-radius: 50%; border: 1px solid #424a3b; display: grid; place-items: center; box-shadow: 0 0 0 12px #292f26; }
 .plate-inner div { border-radius: 50%; background: #171a18; border: 1px solid #424a3b; width: 29%; aspect-ratio: 1; }
 .section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.program-export { flex: none; color: var(--muted); }
+.program-export:hover:not(:disabled) { color: var(--accent); }
 .overview-list li, .catalog li, .history-list li { border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: .7rem 0; }
 .overview-list li span:last-child { white-space: nowrap; }
 .feedback { padding: .72rem .9rem; background: #272d24; border: 1px solid #404c34; border-radius: 9px; margin-bottom: 13px; }

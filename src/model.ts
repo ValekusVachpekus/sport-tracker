@@ -1,7 +1,9 @@
 export type Exercise = { id: string; name: string; bodyweight: boolean; archived: boolean }
-export type Slot = { id: string; exerciseId: string; sets: number; min: number; max: number; start: number | null; step: number | null }
+export type Slot = { id: string; exerciseId: string; name?: string; sets: number; min: number; max: number; start: number | null; step: number | null }
 export type Day = { name: string; slots: Slot[] }
-export type Program = { exercises: Exercise[]; days: Day[] }
+export type WorkoutTemplate = Day & { id: string }
+export type Program = { exercises: Exercise[]; days: Day[]; templates: WorkoutTemplate[] }
+export type StoredProgram = Omit<Program, 'templates'> & { templates?: WorkoutTemplate[] }
 export type SetEntry = { weight: string; reps: string; status: 'open' | 'done' | 'skipped' }
 export type WorkoutExercise = { slot: Slot; name: string; bodyweight: boolean; entries: SetEntry[] }
 export type Workout = { id: string; date: string; title: string; day: number; exercises: WorkoutExercise[]; bodyMassKg?: string; deleted?: true }
@@ -13,11 +15,30 @@ export function newProgram(): Program {
   const weighted = ['Жим штанги лёжа', 'Приседания со штангой', 'Становая тяга', 'Тяга верхнего блока', 'Тяга горизонтального блока', 'Жим гантелей', 'Жим ногами', 'Сгибание рук с гантелями', 'Разгибание рук на блоке', 'Румынская тяга']
   const bodyweight = ['Подтягивания', 'Отжимания', 'Отжимания на брусьях', 'Скручивания']
   return {
-    days: weekdays.map(name => ({ name, slots: [] })),
+    days: weekdays.map(() => ({ name: '', slots: [] })),
+    templates: [],
     exercises: [...weighted, ...bodyweight].map((name, i) => ({
       id: `standard-${i + 1}`, name, bodyweight: i >= weighted.length, archived: false,
     })),
   }
+}
+
+export function upgradeProgram(program: StoredProgram): Program {
+  if (program.templates) return { ...program, templates: program.templates }
+  let unnamed = 0
+  const days = program.days.map((day, index) => {
+    if (day.name.trim() && day.name.trim() !== weekdays[index]) return day
+    return { ...day, name: day.slots.length ? `Тренировка ${++unnamed}` : '' }
+  })
+  const templates = days.flatMap((day, index) => day.slots.length ? [{
+    id: `existing-${index}`, name: day.name,
+    slots: day.slots.map(slot => ({ ...slot, id: `existing-${index}-${slot.id}` })),
+  }] : [])
+  return { ...program, days, templates }
+}
+
+export function copyWorkout({ name, slots }: Day): Day {
+  return { name, slots: slots.map(slot => ({ ...slot, id: crypto.randomUUID() })) }
 }
 
 export function dateKey(date: Date) {
@@ -98,13 +119,13 @@ export function suggestedWeight(slot: Slot, previous?: WorkoutExercise) {
 export function startWorkout(program: Program, dayIndex: number, history: HistoryRow[]): Workout {
   const day = program.days[dayIndex]
   return {
-    id: crypto.randomUUID(), date: dateKey(new Date()), day: dayIndex, title: day.name,
+    id: crypto.randomUUID(), date: dateKey(new Date()), day: dayIndex, title: day.name || 'Тренировка',
     exercises: day.slots.map(slot => {
       const exercise = program.exercises.find(x => x.id === slot.exerciseId)!
       const previous = recentForSlot(history, slot)
       const last = previous?.entries.find(set => set.status === 'done')
       return {
-        slot, name: exercise.name, bodyweight: exercise.bodyweight,
+        slot, name: slot.name ?? exercise.name, bodyweight: exercise.bodyweight,
         entries: Array.from({ length: slot.sets }, (_, i) => {
           const sameSet = previous?.entries[i]
           const prior = sameSet?.status === 'done' ? sameSet : last
@@ -180,6 +201,18 @@ export function progressSummary(history: HistoryRow[], weeks: number, today = ne
   return { workouts: workouts.length, sets, plannedSets, completion: completionPercent(sets, plannedSets), averageChange, comparedExercises: comparable.length }
 }
 
+export function programExport(program: Program, now = new Date()) {
+  return {
+    schemaVersion: 1,
+    exportedAt: now.toISOString(),
+    program: {
+      exercises: program.exercises,
+      days: program.days.map((day, index) => ({ ...day, weekday: weekdays[index] })),
+      templates: program.templates,
+    },
+  }
+}
+
 export function journalExport(program: Program, history: HistoryRow[], queue: Workout[], now = new Date()) {
   const syncedIds = new Set(history.map(({ workout }) => workout.id))
   const records = [
@@ -187,12 +220,7 @@ export function journalExport(program: Program, history: HistoryRow[], queue: Wo
     ...queue.filter(workout => !syncedIds.has(workout.id)).map(workout => ({ workout, syncPending: true })),
   ].filter(({ workout }) => !workout.deleted).sort((a, b) => b.workout.date.localeCompare(a.workout.date))
   return {
-    schemaVersion: 1,
-    exportedAt: now.toISOString(),
-    program: {
-      exercises: program.exercises,
-      days: program.days.map((day, index) => ({ ...day, weekday: weekdays[index] })),
-    },
+    ...programExport(program, now),
     workouts: records.map(({ workout, syncPending }) => ({
       id: workout.id,
       date: workout.date,
