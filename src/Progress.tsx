@@ -85,23 +85,23 @@ export function Progress({ history, exercises }: { history: HistoryRow[]; exerci
   const title = showMass ? 'Масса тела' : { max: 'Максимальный вес', volume: 'Объём нагрузки', reps: 'Всего повторений' }[metric]
   const numbers = showMass ? massFormat : format
   return <>
-    <header className="page-heading"><p className="eyebrow">Результаты</p><h1>Прогресс</h1></header>
+    <header className="page-heading"><h1>Прогресс</h1></header>
     <div className="segments progress-mode" aria-label="Показатель прогресса">
       <button aria-pressed={!showMass} onClick={() => setShowMass(false)}>Упражнения</button>
       <button aria-pressed={showMass} onClick={() => setShowMass(true)}>Масса тела</button>
     </div>
-    {!showMass && !exercise ? <section className="panel section"><h2>Пока нет данных</h2><p className="muted">Заверши тренировку, чтобы увидеть результаты по упражнениям.</p></section> :
+    {!showMass && !exercise ? <section className="panel section"><p className="muted">Пока нет завершённых тренировок.</p></section> :
       <section className="panel section">
         {!showMass && exercise && <label>Упражнение<select value={exercise.id} onChange={e => select(e.target.value)}>{options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
         <div className="segments">{[[4, '4 недели'], [12, '12 недель'], [0, 'Всё время']].map(([value, label]) => <button key={value} aria-pressed={weeks === value} onClick={() => setWeeks(Number(value))}>{label}</button>)}</div>
         {!showMass && exercise && !exercise.bodyweight && <div className="segments"><button aria-pressed={metric === 'max'} onClick={() => setMetric('max')}>Макс. вес</button><button aria-pressed={metric === 'volume'} onClick={() => setMetric('volume')}>Объём</button></div>}
         {points.length ? <>
-          <div className="chart-heading"><h2>{title}</h2><strong>{numbers.format(last!)} {unit}</strong><p className="muted">{change === null ? 'Недостаточно данных для сравнения' : `${change > 0 ? '+' : ''}${numbers.format(change)}${showMass ? ' кг' : '%'} за выбранный период`}</p></div>
+          <div className="chart-heading"><h2>{title}</h2><strong>{numbers.format(last!)} {unit}</strong>{change !== null && <p className="muted">{change > 0 ? '+' : ''}{numbers.format(change)}{showMass ? ' кг' : '%'} за период</p>}</div>
           <Chart points={points} focusRange={showMass} />
           <details className="disclosure"><summary>Данные графика</summary><table><thead><tr><th>Дата</th><th>{title}, {unit}</th></tr></thead><tbody>
             {points.map(point => <tr key={point.id}><td>{date.format(localDate(point.date))}</td><td>{numbers.format(point.value)}</td></tr>)}
           </tbody></table></details>
-        </> : <p className="muted">{showMass ? 'За этот период нет замеров. Массу тела можно указать во время тренировки.' : 'За этот период нет тренировок с упражнением.'}</p>}
+        </> : <p className="muted">{showMass ? 'За этот период нет замеров.' : 'За этот период нет тренировок с упражнением.'}</p>}
       </section>
     }
   </>

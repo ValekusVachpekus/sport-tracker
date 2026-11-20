@@ -21,7 +21,7 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
   const completed = doneCount(workout)
   const invalidMass = Boolean(workout.bodyMassKg?.trim()) && readBodyMass(workout.bodyMassKg) === null
   return <>
-    <header className="page-heading"><p className="eyebrow">{editing ? 'Редактирование истории' : 'Тренировка'}</p><h1>{workout.title}</h1><p className="muted">Подходов выполнено: {completed}</p></header>
+    <header className="page-heading workout-heading"><h1>{workout.title}</h1><p className="heading-meta">{editing ? 'Запись в истории' : `Подходов: ${completed}`}</p></header>
     <fieldset className="editor" disabled={busy}>
       <section className="panel section">
         <label className="body-mass">
@@ -40,13 +40,18 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
         const nextWeight = suggestedWeight(item.slot, prior)
         const label = (i: number, field: string) => `${item.name}, подход ${i + 1}: ${field}`
         return <section className="panel section workout-block" key={item.slot.id}>
-          <h2>{item.name}</h2>
-          <p className="muted target">{item.slot.sets} × {item.slot.min === item.slot.max ? item.slot.min : `${item.slot.min}–${item.slot.max}`} повторений</p>
+          <div className="section-title">
+            <div>
+              <h2>{item.name}</h2>
+              <p className="muted target">{item.slot.sets} × {item.slot.min === item.slot.max ? item.slot.min : `${item.slot.min}–${item.slot.max}`}</p>
+            </div>
+            <button className="text-button add-set" aria-label={`Добавить подход: ${item.name}`} onClick={() => update(item.slot.id, sets => [...sets, { weight: sets.at(-1)?.weight ?? '', reps: '', status: 'open' }])}><Plus /> Подход</button>
+          </div>
           {nextWeight !== null && item.entries.some(set => set.status === 'open' && Number(set.weight.replace(',', '.')) !== nextWeight) && <div className="suggestion">
             <span>Следующий вес · <strong>{nextWeight.toLocaleString('ru')} кг</strong></span>
             <button className="text-button" onClick={() => update(item.slot.id, sets => sets.map(set => set.status === 'open' ? { ...set, weight: String(nextWeight) } : set))}>Применить</button>
           </div>}
-          <div className="set-grid set-labels" aria-hidden="true"><span>№</span><span>Прошлый раз</span><span>Кг</span><span>Повторы</span><span/><span/></div>
+          <div className="set-grid set-labels" aria-hidden="true"><span>№</span><span>Ранее</span><span>Кг</span><span>Повторы</span><span/><span/></div>
           {item.entries.map((set, i) => {
             const old = prior?.entries[i]
             return <div className={`set-grid set-line ${set.status}`} key={i}>
@@ -64,7 +69,6 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
               <button className="icon set-skip" aria-label={label(i, set.status === 'skipped' ? 'вернуть подход' : 'пропустить подход')} onClick={() => patch(item.slot.id, i, { status: set.status === 'skipped' ? 'open' : 'skipped' })}>{set.status === 'skipped' ? <RotateCcw /> : <Minus />}</button>
             </div>
           })}
-          <button className="text-button add-set" onClick={() => update(item.slot.id, sets => [...sets, { weight: sets.at(-1)?.weight ?? '', reps: '', status: 'open' }])}><Plus /> Подход</button>
         </section>
       })}
       <div className="editor-footer">

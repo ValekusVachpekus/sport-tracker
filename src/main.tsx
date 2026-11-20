@@ -45,7 +45,6 @@ function Login({ enter }: { enter: (owner: string) => void }) {
   return <main className="auth">
     <Brand />
     <section className="panel section auth-panel">
-      <p className="eyebrow">Журнал тренировок</p>
       <h1>{api.configured ? 'Вход' : 'Подключение к журналу'}</h1>
       {api.configured ? <form onSubmit={submit}>
         <label>Почта<input name="email" type="email" autoComplete="username" required /></label>
@@ -222,7 +221,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
         {notice && <p className="feedback error" role="alert">{notice}</p>}
         {showDraft && <WorkoutEditor workout={draft.workout} previous={draft.previous} change={changeDraft} complete={() => void closeDraft(true)} cancel={() => void closeDraft(false)} busy={busy} />}
         {tab === 'today' && !draft && <>
-          <header className="page-heading today-heading"><p className="eyebrow">{todayFormat.format(now)}</p><h1>Сегодня</h1></header>
+          <header className="page-heading today-heading"><h1>Сегодня</h1><p className="heading-meta">{todayFormat.format(now)}</p></header>
           {program ? <>
             <div className="week" aria-label="Выбрать день тренировки">
               {shortDays.map((label, i) => {
@@ -235,9 +234,8 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
             </div>
             <section className="panel today-card">
               <div className="today-copy">
-                <p className="eyebrow">{planned.length ? 'Тренировка по плану' : 'Расписание'}</p>
                 <h2>{planned.length ? schedule?.name : 'День отдыха'}</h2>
-                <p className="muted">{planned.length ? `${planned.length} упр. · ${planned.reduce((sum, item) => sum + item.sets, 0)} подх.` : 'На этот день тренировка не запланирована.'}</p>
+                {planned.length > 0 && <p className="muted">{planned.length} упр. · {planned.reduce((sum, item) => sum + item.sets, 0)} подх.</p>}
                 {planned.length ? <button className="primary" disabled={!connected || !localReady || busy} onClick={() => void start()}><Play fill="currentColor" /> Начать тренировку</button>
                   : <button className="secondary" onClick={() => navigate('program')}>Открыть программу</button>}
               </div>
@@ -257,11 +255,11 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
         {tab === 'history' && edit && <WorkoutEditor workout={edit.workout} previous={{}} change={apply => setEdit(current => current && { ...current, workout: apply(current.workout) })}
           complete={() => void saveEdit()} cancel={() => setEdit(undefined)} busy={busy || !connected} editing />}
         {tab === 'history' && !edit && <>
-          <header className="page-heading"><p className="eyebrow">Журнал</p><h1>История</h1></header>
+          <header className="page-heading"><h1>История</h1></header>
           <section className="panel section">
             {!connected && <p className="muted">Полная история откроется при подключении.</p>}
             {connected && !historyReady && <p className="muted">{loading ? 'Загружаем историю…' : 'История пока недоступна.'}</p>}
-            {connected && historyReady && !history.length && !local.queue.length && <p className="muted">Здесь появятся завершённые тренировки.</p>}
+            {connected && historyReady && !history.length && !local.queue.length && <p className="muted">Пока нет тренировок.</p>}
             <ul className="history-list">
               {local.queue.map(workout => <li key={workout.id}><div><strong>{workout.title}</strong><WorkoutDate workout={workout} /></div><small>Ожидает отправки</small></li>)}
               {connected && history.filter(({ workout }) => !queueIds.has(workout.id)).map(row => <li key={row.workout.id}>
