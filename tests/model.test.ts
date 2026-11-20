@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bodyMassPoints, doneCount, newProgram, progressPoints, readBodyMass, readNumber, recentForSlot, startWorkout, suggestedWeight, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
+import { bodyMassPoints, completionColor, doneCount, journalExport, newProgram, progressPoints, progressSummary, readBodyMass, readNumber, recentForSlot, startWorkout, suggestedWeight, trainingWeeks, workoutCompletion, type HistoryRow, type Slot, type WorkoutExercise } from '../src/model.ts'
 
 const slot: Slot = { id: 'bench', exerciseId: 'standard-1', sets: 3, min: 8, max: 10, start: 60, step: 2.5 }
 const session = (weight: string, reps = '10'): WorkoutExercise => ({
@@ -13,7 +13,8 @@ const row = (id: string, date: string, item: WorkoutExercise): HistoryRow => ({
 test('предлагает прибавку после одной тренировки и принимает запятую в весе', () => {
   assert.equal(suggestedWeight(slot, session('60,5')), 63)
   assert.equal(suggestedWeight(slot, session('60', '9')), null)
-  assert.equal(suggestedWeight({ ...slot, step: null }, session('60')), null)
+  assert.equal(suggestedWeight({ ...slot, step: null }, session('60')), 62.5)
+  assert.equal(suggestedWeight({ ...slot, step: 5 }, session('60')), 65)
   assert.ok(Number.isNaN(readNumber('60,5 кг')))
 })
 
@@ -70,4 +71,64 @@ test('масса тела необязательна, принимает зап�
     { id: 'old', date: '2026-11-13', value: 79.1 },
     { id: 'new', date: '2026-11-20', value: 78.45 },
   ])
+})
+
+test('сводка усредняет изменения по сопоставимым упражнениям и считает тренировки и подходы', () => {
+  const bodyweightSlot = { ...slot, exerciseId: 'pull-ups' }
+  const first = row('first', '2026-11-13', session('50'))
+  const last = row('last', '2026-11-20', session('60'))
+  first.workout.exercises.push({ ...session('', '10'), slot: bodyweightSlot, bodyweight: true })
+  last.workout.exercises.push({ ...session('', '9'), slot: bodyweightSlot, bodyweight: true })
+  last.workout.exercises.push({ ...session('20'), slot: { ...slot, exerciseId: 'new' } })
+  assert.deepEqual(progressSummary([last, first], 4, new Date(2026, 10, 20)), {
+    workouts: 2, sets: 15, plannedSets: 15, completion: 100, averageChange: 5, comparedExercises: 2,
+  })
+  assert.equal(progressSummary([last], 0).averageChange, null)
+})
+
+test('экспорт включает программу и завершённые тренировки с числовыми замерами без дублей', () => {
+  const saved = row('saved', '2026-11-13', session('62,5'))
+  saved.workout.bodyMassKg = '78,1'
+  saved.workout.exercises[0].entries[1].status = 'skipped'
+  const pending = row('pending', '2026-11-20', session('65')).workout
+  const program = newProgram()
+  const data = journalExport(program, [saved], [pending, saved.workout], new Date('2026-11-20T09:00:00Z'))
+  assert.deepEqual(data.workouts.map(workout => [workout.id, workout.syncPending]), [['pending', true], ['saved', false]])
+  assert.equal(data.workouts[1].bodyMassKg, 78.1)
+  assert.deepEqual(data.workouts[1].completion, { completed: 2, planned: 3, percent: 67 })
+  assert.equal(data.workouts[1].exercises[0].sets[0].weightKg, 62.5)
+  assert.equal(data.workouts[1].exercises[0].sets[1].reps, null)
+  assert.equal(data.program.days[0].weekday, 'Понедельник')
+})
+
+test('удалённая тренировка исключается из подсказок, прогресса и экспорта', () => {
+  const saved = row('removed', '2026-11-20', session('62,5'))
+  saved.workout.deleted = true
+  const original = { ...saved.workout, deleted: undefined }
+  assert.equal(recentForSlot([saved], slot), undefined)
+  assert.equal(progressSummary([saved], 0).workouts, 0)
+  assert.deepEqual(journalExport(newProgram(), [saved], [original]).workouts, [])
+})
+
+test('календарь строит недели с понедельника, в том числе на границе года', () => {
+  const now = new Date(2027, 0, 1, 12)
+  const weeks = trainingWeeks(now, 2)
+  assert.equal(weeks[0][0], '2026-12-21')
+  assert.equal(weeks[1][0], '2026-12-28')
+  assert.equal(weeks[1][6], '2027-01-03')
+  assert.equal(trainingWeeks(now, 2, 2)[1][6], '2026-12-20')
+})
+
+test('процент выполнения учитывает пропущенные и дополнительные подходы', () => {
+  const record = row('score', '2026-11-20', session('60'))
+  const sets = record.workout.exercises[0].entries
+  sets[1].status = 'skipped'
+  assert.deepEqual(workoutCompletion(record.workout), { completed: 2, planned: 3, percent: 67 })
+  sets[1].status = 'done'
+  sets.push({ ...sets[0] }, { ...sets[0], status: 'open' })
+  assert.deepEqual(workoutCompletion(record.workout), { completed: 4, planned: 3, percent: 133 })
+  assert.equal(progressSummary([record], 0).completion, 133)
+  assert.equal(completionColor(133), completionColor(100))
+  assert.notEqual(completionColor(75), completionColor(100))
+  assert.notEqual(completionColor(0), completionColor(75))
 })

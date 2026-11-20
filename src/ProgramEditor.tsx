@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Archive, ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, Pencil, Plus, Settings2, Trash2, X } from 'lucide-react'
 import { readNumber, shortDays, weekdays, type Exercise, type Program, type Slot } from './model'
 
 export function ProgramEditor({ initial, today, onSave }: { initial: { program: Program; revision: number }; today: number; onSave: (program: Program, revision: number) => Promise<number> }) {
@@ -9,18 +9,40 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   const [exerciseId, setExerciseId] = useState('')
   const [newName, setNewName] = useState('')
   const [bodyweight, setBodyweight] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [catalog, setCatalog] = useState(false)
+  const [rename, setRename] = useState<{ slotId: string; exerciseId: string; name: string }>()
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
   const [createError, setCreateError] = useState('')
-  const [addedId, setAddedId] = useState('')
+  const [renameError, setRenameError] = useState('')
   // Keep input strings until save so intermediate decimal values stay editable.
-  const [weights, setWeights] = useState<Record<string, string>>({})
+  const [startingWeights, setStartingWeights] = useState<Record<string, string>>({})
   const day = program.days[index]
   const selectedExercise = program.exercises.find(exercise => exercise.id === exerciseId && !exercise.archived)
-  const addedSlot = day.slots.find(slot => slot.id === addedId)
-  const addedExercise = program.exercises.find(exercise => exercise.id === addedSlot?.exerciseId)
+
+  function nameExists(name: string, exceptId?: string) {
+    const normalized = name.toLocaleLowerCase('ru')
+    return program.exercises.some(item => item.id !== exceptId && item.name.toLocaleLowerCase('ru') === normalized)
+  }
+
+  function withRenamedExercise() {
+    if (!rename) return program
+    const name = rename.name.trim()
+    if (!name || nameExists(name, rename.exerciseId)) {
+      setRenameError(name ? 'Такое название уже есть.' : 'Введи название.')
+      return null
+    }
+    return { ...program, exercises: program.exercises.map(item => item.id === rename.exerciseId ? { ...item, name } : item) }
+  }
+
+  function applyRename() {
+    const next = withRenamedExercise()
+    if (!next) return
+    update(next)
+    setRename(undefined)
+  }
 
   function update(next: Program) {
     setProgram(next)
@@ -41,13 +63,12 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
       exercises,
       days: program.days.map((item, i) => i === index ? { ...item, slots: [...item.slots, slot] } : item),
     })
-    setAddedId(slot.id)
     setExerciseId('')
   }
   function createExercise() {
     const name = newName.trim()
     if (!name) return
-    if (program.exercises.some(exercise => exercise.name.toLocaleLowerCase('ru') === name.toLocaleLowerCase('ru'))) {
+    if (nameExists(name)) {
       setCreateError('Упражнение с таким названием уже есть в каталоге.')
       return
     }
@@ -56,6 +77,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
     setNewName('')
     setBodyweight(false)
     setCreateError('')
+    setCreating(false)
   }
   function move(position: number, distance: number) {
     const slots = [...day.slots]
@@ -67,34 +89,32 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
   async function save() {
     setError('')
     setSaved(false)
+    const next = withRenamedExercise()
+    if (!next) return
     try {
       const normalized = {
-        ...program,
-        days: program.days.map((item, i) => ({
+        ...next,
+        days: next.days.map((item, i) => ({
           ...item, name: item.name.trim() || weekdays[i],
           slots: item.slots.map(slot => {
-            const exercise = program.exercises.find(x => x.id === slot.exerciseId)!
-            const fields = { start: slot.start, step: slot.step }
-            for (const field of ['start', 'step'] as const) {
-              const raw = weights[slot.id + field] ?? String(slot[field] ?? '')
-              fields[field] = raw.trim() ? readNumber(raw) : null
-              const value = fields[field]
-              if (value !== null && !(value >= (field === 'step' ? 0.001 : 0) && value <= 9999)) {
-                throw new Error(`${weekdays[i]}, ${exercise.name}: проверь вес и шаг прибавки.`)
-              }
+            const exercise = next.exercises.find(x => x.id === slot.exerciseId)!
+            const raw = startingWeights[slot.id] ?? String(slot.start ?? '')
+            const start = raw.trim() ? readNumber(raw) : null
+            if (start !== null && !(start >= 0 && start <= 9999)) {
+              throw new Error(`${weekdays[i]}, ${exercise.name}: проверь стартовый вес.`)
             }
             if (!Number.isInteger(slot.sets) || slot.sets < 1 || slot.sets > 30 ||
                 !Number.isInteger(slot.min) || !Number.isInteger(slot.max) || slot.min < 1 || slot.max < slot.min || slot.max > 999) {
               throw new Error(`${weekdays[i]}, ${exercise.name}: укажи 1–30 подходов и корректный диапазон повторений.`)
             }
-            return { ...slot, ...fields }
+            return { ...slot, start }
           }),
         })),
       }
       setBusy(true)
       setRevision(await onSave(normalized, revision))
       setProgram(normalized)
-      setAddedId('')
+      setRename(undefined)
       setSaved(true)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Не удалось сохранить программу.')
@@ -108,7 +128,7 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
         if (i === index) return
         setIndex(i)
         setExerciseId('')
-        setAddedId('')
+        setRename(undefined)
       }}>
         {label}<span>{program.days[i].slots.length || '–'}</span>
       </button>)}
@@ -116,58 +136,74 @@ export function ProgramEditor({ initial, today, onSave }: { initial: { program: 
     <fieldset disabled={busy} className="editor">
       <section className="panel section">
         <label>Название тренировки<input value={day.name} maxLength={70} onChange={event => updateDay({ ...day, name: event.target.value })} /></label>
-        <div className="section-title"><h2>Упражнения в программе</h2><span className="muted">{day.slots.length}</span></div>
-        {day.slots.length === 0 && <p className="muted">Пока нет упражнений.</p>}
+        <div className="section-title"><h2>Упражнения</h2><span className="muted">{day.slots.length}</span></div>
         {day.slots.map((slot, position) => {
           const exercise = program.exercises.find(x => x.id === slot.exerciseId)!
           return <div className="slot" key={slot.id}>
             <div className="section-title">
-              <h3>{exercise.name}</h3>
+              <h3><button type="button" className="exercise-name" aria-label={`Переименовать: ${exercise.name}`} onClick={() => {
+                setRename({ slotId: slot.id, exerciseId: exercise.id, name: exercise.name })
+                setRenameError('')
+              }}><span>{exercise.name}</span><Pencil /></button></h3>
               <div className="actions">
                 <button type="button" className="icon" aria-label={`Выше: ${exercise.name}`} disabled={!position} onClick={() => move(position, -1)}><ArrowUp /></button>
                 <button type="button" className="icon" aria-label={`Ниже: ${exercise.name}`} disabled={position === day.slots.length - 1} onClick={() => move(position, 1)}><ArrowDown /></button>
-                <button type="button" className="icon" aria-label={`Убрать: ${exercise.name}`} onClick={() => updateDay({ ...day, slots: day.slots.filter(item => item.id !== slot.id) })}><Trash2 /></button>
+                <button type="button" className="icon" aria-label={`Убрать: ${exercise.name}`} onClick={() => {
+                  if (rename?.slotId === slot.id) setRename(undefined)
+                  updateDay({ ...day, slots: day.slots.filter(item => item.id !== slot.id) })
+                }}><Trash2 /></button>
               </div>
             </div>
+            {rename?.slotId === slot.id && <form className="rename-form" onSubmit={event => { event.preventDefault(); applyRename() }}>
+              <input autoFocus aria-label="Новое название упражнения" aria-invalid={Boolean(renameError)} aria-describedby={renameError ? 'rename-error' : undefined}
+                maxLength={80} value={rename.name} onChange={event => {
+                  setRename({ ...rename, name: event.target.value })
+                  setRenameError('')
+                  setSaved(false)
+                }} />
+              <button type="submit" className="icon secondary" aria-label="Применить название"><Check /></button>
+              <button type="button" className="icon" aria-label="Отменить переименование" onClick={() => setRename(undefined)}><X /></button>
+              {renameError && <p id="rename-error" className="rename-error" role="alert">{renameError}</p>}
+            </form>}
             <div className={`field-grid${exercise.bodyweight ? '' : ' field-grid-weighted'}`}>
               {([['sets', 'Подходы', 'Подходы'], ['min', 'Повт. от', 'Повторы от'], ['max', 'Повт. до', 'Повторы до']] as const).map(([field, label, accessibleLabel]) =>
                 <label key={field}>{label}<input aria-label={accessibleLabel} inputMode="numeric" value={slot[field] || ''} onChange={event => updateSlot(slot.id, { [field]: Number(event.target.value.replace(/\D/g, '')) })} /></label>)}
-              {!exercise.bodyweight && ([['start', 'Старт, кг'], ['step', 'Шаг, кг']] as const).map(([field, label]) =>
-                <label key={field}>{label}<input inputMode="decimal" placeholder="—" value={weights[slot.id + field] ?? slot[field] ?? ''} onChange={event => {
-                  setWeights({ ...weights, [slot.id + field]: event.target.value })
+              {!exercise.bodyweight &&
+                <label>Старт, кг<input inputMode="decimal" placeholder="—" value={startingWeights[slot.id] ?? slot.start ?? ''} onChange={event => {
+                  setStartingWeights({ ...startingWeights, [slot.id]: event.target.value })
                   setSaved(false)
-                }} /></label>)}
+                }} /></label>}
             </div>
           </div>
         })}
       </section>
-      <section className="panel section add-exercise" aria-labelledby="add-exercise-heading">
-        <h2 id="add-exercise-heading">Добавить упражнение</h2>
+      <section className="panel add-exercise" aria-label="Добавить упражнение">
         <div className="add-row">
           <select aria-label="Упражнение из каталога" value={exerciseId} onChange={event => setExerciseId(event.target.value)}>
             <option value="">Из каталога</option>
             {program.exercises.filter(x => !x.archived).map(exercise => <option key={exercise.id} value={exercise.id}>{exercise.name}</option>)}
           </select>
-          <button className="secondary" aria-label="Добавить в программу" disabled={!selectedExercise} onClick={() => {
+          <button className="secondary add-choice" aria-label="Добавить в программу" title="Добавить в программу" disabled={!selectedExercise} onClick={() => {
             if (selectedExercise) addToDay(selectedExercise)
-          }}><Plus /> Добавить</button>
+          }}><Plus /><span>Добавить</span></button>
+          <button className="text-button create-toggle" aria-label="Создать своё упражнение" aria-expanded={creating} onClick={() => {
+            setCreating(!creating)
+            setCatalog(false)
+          }}>Своё</button>
+          <button className="icon catalog-toggle" aria-label="Управлять каталогом" title="Управлять каталогом" aria-expanded={catalog} onClick={() => {
+            setCatalog(!catalog)
+            setCreating(false)
+          }}><Settings2 /></button>
         </div>
-        <details className="disclosure">
-          <summary>Создать своё упражнение</summary>
-          <label>Название<input value={newName} maxLength={80} onChange={event => {
+        {creating && <form className="create-exercise" onSubmit={event => { event.preventDefault(); createExercise() }}>
+          <input aria-label="Название нового упражнения" placeholder="Название упражнения" autoFocus value={newName} maxLength={80} onChange={event => {
             setNewName(event.target.value)
             setCreateError('')
-          }} /></label>
+          }} />
           <label className="check"><input type="checkbox" checked={bodyweight} onChange={event => setBodyweight(event.target.checked)} /> С собственным весом</label>
-          {createError && <p className="feedback error" role="alert">{createError}</p>}
-          <button className="secondary" disabled={!newName.trim()} onClick={createExercise}>Создать и добавить</button>
-        </details>
-        <div className="add-status" role="status">
-          {addedExercise && <>«{addedExercise.name}» добавлено.</>}
-        </div>
-      </section>
-      <section className="panel section">
-        <button className="text-button" aria-expanded={catalog} onClick={() => setCatalog(!catalog)}><Archive /> {catalog ? 'Свернуть каталог' : 'Управлять каталогом'}</button>
+          {createError && <p className="rename-error" role="alert">{createError}</p>}
+          <button type="submit" className="secondary" disabled={!newName.trim()}>Создать и добавить</button>
+        </form>}
         {catalog && <ul className="catalog">
           {program.exercises.map(exercise => <li key={exercise.id}><span>{exercise.name}</span><button className="text-button" onClick={() => {
             update({ ...program, exercises: program.exercises.map(x => x.id === exercise.id ? { ...x, archived: !x.archived } : x) })

@@ -124,7 +124,7 @@ export async function history(owner: string) {
   const query = `workouts?user_id=eq.${owner}&select=workout,revision&order=workout_date.desc,created_at.desc,id.desc`
   for (let offset = 0; ; offset += 200) {
     const page = await data<HistoryRow[]>(owner, `${query}&limit=200&offset=${offset}`)
-    rows.push(...page)
+    rows.push(...page.filter(({ workout }) => !workout.deleted))
     if (page.length < 200) return rows
   }
 }

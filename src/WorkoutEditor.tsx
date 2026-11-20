@@ -1,5 +1,5 @@
 import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
-import { doneCount, readBodyMass, suggestedWeight, validEntry, type SetEntry, type Workout, type WorkoutExercise } from './model'
+import { completionColor, readBodyMass, suggestedWeight, validEntry, workoutCompletion, type SetEntry, type Workout, type WorkoutExercise } from './model'
 
 export function WorkoutEditor({ workout, previous, change, complete, cancel, busy, editing = false }: {
   workout: Workout
@@ -18,10 +18,12 @@ export function WorkoutEditor({ workout, previous, change, complete, cancel, bus
   function patch(itemId: string, index: number, fields: Partial<SetEntry>) {
     update(itemId, entries => entries.map((set, i) => i === index ? { ...set, ...fields } : set))
   }
-  const completed = doneCount(workout)
+  const { completed, planned, percent } = workoutCompletion(workout)
   const invalidMass = Boolean(workout.bodyMassKg?.trim()) && readBodyMass(workout.bodyMassKg) === null
   return <>
-    <header className="page-heading workout-heading"><h1>{workout.title}</h1><p className="heading-meta">{editing ? 'Запись в истории' : `Подходов: ${completed}`}</p></header>
+    <header className="page-heading workout-heading"><h1>{workout.title}</h1><p className="heading-meta">
+      {completed}/{planned} подх.{percent !== null && <> · <strong style={{ color: completionColor(percent) }}>{percent}%</strong></>}
+    </p></header>
     <fieldset className="editor" disabled={busy}>
       <section className="panel section">
         <label className="body-mass">

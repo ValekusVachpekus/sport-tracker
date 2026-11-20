@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, BarChart3, CalendarDays, Check, ChevronRight, ClipboardList, Dumbbell, LogOut, Play, RefreshCw } from 'lucide-react'
+import { Activity, BarChart3, CalendarDays, ChevronRight, ClipboardList, Dumbbell, LogOut, Play, RefreshCw, Trash2 } from 'lucide-react'
 import * as api from './api'
 import { changeLocal, emptyLocal, readLocal } from './storage'
-import { doneCount, localDate, readBodyMass, recentForSlot, shortDays, startWorkout, type HistoryRow, type Workout } from './model'
+import { completionColor, doneCount, localDate, readBodyMass, recentForSlot, shortDays, startWorkout, workoutCompletion, type HistoryRow, type Workout } from './model'
 import { ProgramEditor } from './ProgramEditor'
 import { WorkoutEditor } from './WorkoutEditor'
 import { Progress } from './Progress'
+import { TrainingCalendar } from './TrainingCalendar'
 import './style.css'
 
 const tabs = [
@@ -24,6 +25,14 @@ const kgFormat = new Intl.NumberFormat('ru', { maximumFractionDigits: 3 })
 function WorkoutDate({ workout }: { workout: Workout }) {
   const mass = readBodyMass(workout.bodyMassKg)
   return <span>{prettyDate.format(localDate(workout.date))}{mass !== null && ` · Масса тела ${kgFormat.format(mass)} кг`}</span>
+}
+
+function HistoryScore({ completion }: { completion: ReturnType<typeof workoutCompletion> }) {
+  const { completed, planned, percent } = completion
+  return <span className="history-score" aria-label={`${completed} из ${planned} подходов${percent === null ? '' : `, ${percent}%`}`}>
+    {percent !== null && <strong style={{ color: completionColor(percent) }}>{percent}%</strong>}
+    <small>{completed}/{planned}</small>
+  </span>
 }
 
 function Brand() {
@@ -72,6 +81,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
   const [now, setNow] = useState(() => new Date())
   const [dayOverride, setDayOverride] = useState<number>()
   const activeSync = useRef(false)
+  const removedWorkoutIds = useRef(new Set<string>())
   const today = (now.getDay() + 6) % 7
   const day = dayOverride ?? today
 
@@ -91,7 +101,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
       setProgram(current => current && current.revision > schedule.revision ? current : schedule)
       setHistory(current => {
         const revisions = new Map(current.map(row => [row.workout.id, row]))
-        return entries.map(row => {
+        return entries.filter(row => !removedWorkoutIds.current.has(row.workout.id)).map(row => {
           const cached = revisions.get(row.workout.id)
           return cached && cached.revision > row.revision ? cached : row
         })
@@ -141,7 +151,7 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
     setBusy(true)
     setNotice('')
     try {
-      const refreshed = await api.history(owner)
+      const refreshed = (await api.history(owner)).filter(row => !removedWorkoutIds.current.has(row.workout.id))
       const workout = startWorkout(program.program, day, refreshed)
       const previous = Object.fromEntries(workout.exercises.flatMap(item => {
         const prior = recentForSlot(refreshed, item.slot)
@@ -196,6 +206,18 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
       const saved = await api.editWorkout(owner, edit.workout, edit.revision)
       setHistory(current => current.map(row => row.workout.id === saved.workout.id ? saved : row))
       setEdit(undefined)
+    } catch (error) { setNotice(message(error)) }
+    finally { setBusy(false) }
+  }
+
+  async function removeWorkout({ workout, revision }: HistoryRow) {
+    if (!connected || busy || !window.confirm(`Удалить «${workout.title}» за ${prettyDate.format(localDate(workout.date))}?`)) return
+    setBusy(true)
+    setNotice('')
+    try {
+      await api.editWorkout(owner, { ...workout, deleted: true }, revision)
+      removedWorkoutIds.current.add(workout.id)
+      setHistory(current => current.filter(row => row.workout.id !== workout.id))
     } catch (error) { setNotice(message(error)) }
     finally { setBusy(false) }
   }
@@ -256,22 +278,36 @@ function Journal({ owner, exit }: { owner: string; exit: () => void }) {
           complete={() => void saveEdit()} cancel={() => setEdit(undefined)} busy={busy || !connected} editing />}
         {tab === 'history' && !edit && <>
           <header className="page-heading"><h1>История</h1></header>
+          {(historyReady || local.queue.length > 0) && <TrainingCalendar now={now} workouts={[
+            ...history.map(row => row.workout), ...local.queue,
+          ]} program={historyReady && connected ? program?.program : undefined} />}
           <section className="panel section">
             {!connected && <p className="muted">Полная история откроется при подключении.</p>}
             {connected && !historyReady && <p className="muted">{loading ? 'Загружаем историю…' : 'История пока недоступна.'}</p>}
             {connected && historyReady && !history.length && !local.queue.length && <p className="muted">Пока нет тренировок.</p>}
             <ul className="history-list">
-              {local.queue.map(workout => <li key={workout.id}><div><strong>{workout.title}</strong><WorkoutDate workout={workout} /></div><small>Ожидает отправки</small></li>)}
-              {connected && history.filter(({ workout }) => !queueIds.has(workout.id)).map(row => <li key={row.workout.id}>
-                <button className="history-row" onClick={() => { setEdit(row); window.scrollTo(0,0) }}>
-                  <div><strong>{row.workout.title}</strong><WorkoutDate workout={row.workout} /></div>
-                  <span className="history-count"><Check /> {doneCount(row.workout)}<ChevronRight /></span>
-                </button>
-              </li>)}
+              {local.queue.map(workout => {
+                const completion = workoutCompletion(workout)
+                return <li className="history-entry" key={workout.id} style={{ backgroundColor: completionColor(completion.percent, 54, .09) }}>
+                  <div><strong>{workout.title}</strong><WorkoutDate workout={workout} /><small>Ожидает отправки</small></div>
+                  <HistoryScore completion={completion} />
+                </li>
+              })}
+              {connected && history.filter(({ workout }) => !queueIds.has(workout.id)).map(row => {
+                const completion = workoutCompletion(row.workout)
+                return <li className="history-entry" key={row.workout.id} style={{ backgroundColor: completionColor(completion.percent, 54, .09) }}>
+                  <button className="history-row" onClick={() => { setEdit(row); window.scrollTo(0,0) }}>
+                    <div><strong>{row.workout.title}</strong><WorkoutDate workout={row.workout} /></div>
+                    <HistoryScore completion={completion} /><ChevronRight />
+                  </button>
+                  <button className="icon history-delete" aria-label={`Удалить тренировку: ${row.workout.title}`} disabled={busy}
+                    onClick={() => void removeWorkout(row)}><Trash2 /></button>
+                </li>
+              })}
             </ul>
           </section>
         </>}
-        {tab === 'progress' && (program && historyReady && connected ? <Progress history={history} exercises={program.program.exercises} /> : <p className="feedback">Подключись к интернету, чтобы загрузить прогресс.</p>)}
+        {tab === 'progress' && (program && historyReady && connected ? <Progress history={history} program={program.program} queue={local.queue} /> : <p className="feedback">Подключись к интернету, чтобы загрузить прогресс.</p>)}
       </main>
     </div>
   </div>
